@@ -1,0 +1,169 @@
+---
+title: "Time Series"
+author: "Malak Gaballa-900201683 , Masa Tantawy-900201312 , Moustafa El Mahdy-900201154"
+date: "2023-05-22"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+## Intro 
+  It is important to analyze the growing Egyptian population over the years. This data is a time series data that provides annual figures regarding the population of Egypt from 1950 to 2023. The data will be analyzed from 1950 to 2020 and the years 2021-2023 will be left out for forecasting in the end.\n
+  
+## Reading the Dataset
+```{r Reading the Data}
+df=read.csv('EG Population TS.csv') 
+str(df); dim(df)
+head(df);tail(df)
+```
+Now, the last 3 years will be removed from the main series and used for forecasting.
+```{r Leave }
+forecast= df[c(72,73,74),]
+data = df[-c(72,73,74),]
+```
+
+## Step 1 : Plot the Series
+```{r plot series}
+series <- ts(data$Population,start=c(1950))
+plot.ts(series)
+```
+  From the plot of the series, it is very visible that there is an upward trend. To support this claim, Dickey Fuller's test will be used and it is expected that the difference will be taken to make it stationary. 
+
+## Step 2: Stationarity and Trend Check
+```{r}
+library(urca)
+df=ur.df(series,type="trend",lags=1)
+summary(df) # not stationary, no trend
+df=ur.df(series,type="trend",lags=2)
+summary(df) # not stationary, no trend
+df=ur.df(series,type="trend",lags=3)
+summary(df) # not stationary, no trend
+```
+For all lags, the dickey fuller test concludes the following:
+* The series is not stationary since the p-value is greater than 0.05, thus failing to reject "H0 : series not stationary".
+* The series has no trend since the p-value is greater than 0.05, thus failing to reject "H0: series has no trend".
+
+This suggests that we need to take the required difference to make the series stationary. 
+
+## Step 3: Take First Difference
+```{r}
+series1 <- diff(series, differences=1)
+plot.ts(series1) 
+```
+It is visible that an upward trend still exists. To support this claim, Dickey Fuller's test will be constructed and it is expected that the second difference will be taken to make it stationary. 
+
+### Stationarity and Trend Check
+```{r}
+library(urca)
+df=ur.df(series1,type="trend",lags=1)
+summary(df) # stationary, has a trend
+df=ur.df(series1,type="trend",lags=2)
+summary(df) # stationary, has a trend
+df=ur.df(series1,type="trend",lags=3)
+summary(df) # not stationary, has a trend
+```
+For all lags, the dickey fuller test concludes the following:
+* The series is stationary since the p-value is less than 0.05, thus rejecting "H0 : series not stationary".
+* The series has a trend since the p-value is less than 0.05, thus rejecting "H0: series has no trend".
+
+This suggests that we need to take the required difference to make the series stationary.
+## Step 4: Take Second Difference
+```{r}
+series2 <- diff(series, differences=2)
+plot.ts(series2) #no pattern visible
+```
+After taking the second difference, no pattern is visible. To support this, Dickey Fuller's test will be constructed. 
+### Stationarity and Trend Check
+```{r}
+library(urca)
+df=ur.df(series2,type="trend",lags=1)
+summary(df) # stationary, no trend
+df=ur.df(series2,type="trend",lags=2)
+summary(df) # stationary, no trend
+```
+For all lags, the dickey fuller test concludes the following:
+* The series is stationary since the p-value is less than 0.05, thus rejecting "H0 : series not stationary".
+* The series has no trend since the p-value is greater than 0.05, thus failing to reject "H0: series has no trend".
+
+Since the series is now stationary and has no trend, we shall proceed by plotting the ACF and PACF to determine the order of the model.
+
+## STEP 5: examine ACF & PACF Plots
+```{r}
+op = par(mfrow=c(1,2))
+acf(series2, lag.max=20) # 1 spike
+pacf(series2, lag.max=20) # 1 spike
+par(op)
+```
+Both ACF and PACF have one spike at lag 10, suggesting that an ARMA model will be fitted ; this is because both functions can be considered decaying. Multiple models will be fitted with several values of p and q.
+
+## STEP 6: Chosen Models
+```{r}
+m1<-arima(series, order=c(1,2,1)); m1 #AIC = 1815.06
+m2<-arima(series, order=c(2,2,1)); m2 #AIC = 1817.17
+m3<-arima(series, order=c(1,2,2)); m3 #AIC = 1816.9
+m4<-arima(series, order=c(2,2,2)); m4 #AIC = 1812.75
+m5<-arima(series, order=c(3,2,2)); m5 #AIC = 1814.65
+m6<-arima(series, order=c(2,2,3)); m6 #AIC = 1814.66
+m7<-arima(series, order=c(3,2,3)); m7 #AIC = 1817.52
+# The AIC is increasing, so we will stop fitting larger ARMA models.
+# Chosen Model: M4 ARIMA (2,2,2) 
+```
+After fitting several models, it is visible that the AIC is increasing. Thus, there is no need to fit larger models. The best performing model is Model 4 which is ARIMA(2,2,2) since it has the lowest AIC measure at 1812.75. Next , the assumptions will be checked for this chosen model. 
+
+## STEP 7: Checking NICE Assumptions
+The assumptions that will be checked are as follows:
+1. **N**ormality of Residuals 
+2. **I**ndependence of Residuals
+3. **C**onstant Variance of Residuals
+4. **E**xpectation = 0 
+
+### Best Model : M4 
+```{r}
+# Plot 1: QQ plot of residuals
+qqnorm(m4$residuals); qqline(m4$residuals, col = 2) 
+#normal but the data is too peaked
+# Plot 2: Histogram of residuals
+hist(m4$residuals)
+# ----> Checking for independence
+# Plot 3: Index plot of residuals
+plot(data$Year, m4$residuals, pch=19) # random scatter of points
+# Plot 4: ACF and PACF of residuals
+op = par(mfrow=c(1,2))
+acf(m4$residuals); pacf(m4$residuals) #spike at lag 10 in both ACF & PACF
+par(op)
+# Ljung-Box Pierce Test
+Box.test(m4$residuals, lag = 20, fitdf = 1) 
+#strongly fail to reject H0: independence of residuals
+```
+Since all the assumptions are verified except the independence of residuals due to spikes in ACF and PACF, the second best model will be checked.
+Chosen Model: M5 ARIMA (3,2,2) 
+###Second Best Model : M5
+```{r}
+# Plot 1: QQ plot of residuals
+qqnorm(m5$residuals); qqline(m5$residuals, col = 2)  #normal but the data is too peaked
+# Plot 2: Histogram of residuals
+hist(m5$residuals)
+# ----> Checking for independence
+# Plot 3: Index plot of residuals
+plot(data$Year, m5$residuals, pch=19) # random scatter of points
+# Plot 4: ACF and PACF of residuals
+op = par(mfrow=c(1,2))
+acf(m5$residuals); pacf(m5$residuals) #spike at lag 10 in both ACF & PACF
+par(op)
+# Ljung-Box Pierce Test
+Box.test(m4$residuals, lag = 20, fitdf = 1) 
+#strongly fail to reject H0: independence of residuals
+```
+The assumptions of this model are similar to the previous model assumptions.Thus, using AIC and parsimony principle, the best model is M4 ARIMA (2,2,2). 
+Finally, this model will be used to forecast the Egyptian Population for the years 2021,2022, and 2023. 
+
+## STEP 6: Forecasting
+```{r forecasting}
+library(forecast)
+pred= predict(m4,n.ahead = 3)
+pred$pred ; forecast
+```
+
+It is clear that the forecasted values are very close to the actual figures , indicating that the model is a plausible decision. It is worth noting that as years go by, the forecasted population will become of less accuracy since the error of prediction and variance increase. 
+
